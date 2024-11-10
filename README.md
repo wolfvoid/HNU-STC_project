@@ -22,6 +22,8 @@ A project using STC-B in HNU Summer2023, an interesting project
 
 使用git clone获取该项目，请预留至少100MB空间（主要是OLED补充资料占空间太大，）
 
+串口工具：stc-isp-v6.88F.exe
+
 ### 单片机
 
 使用单片机开发软件KEILμVision，打开Project_STC编译，使用串口工具下载进单片机，即可开始工作。
