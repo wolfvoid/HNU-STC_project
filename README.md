@@ -20,6 +20,8 @@ A project using STC-B in HNU Summer2023, an interesting project
 
 ## 如何开始
 
+使用git clone获取该项目，请预留至少100MB空间（主要是OLED补充资料占空间太大，）
+
 ### 单片机
 
 使用单片机开发软件KEILμVision，打开Project_STC编译，使用串口工具下载进单片机，即可开始工作。
@@ -33,6 +35,8 @@ A project using STC-B in HNU Summer2023, an interesting project
 ## 详细信息
 
 可以在<基于STC板的智能模型（提交电子版）.pdf>中找到。
+
+请注意：OLED相关程序、文件要从所购买的商铺客服处获得，不同型号可能测试程序、使用方式不一样。
 
 ## 写在后面
 
