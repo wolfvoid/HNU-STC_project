@@ -1,0 +1,13 @@
+文件路径：Arduino_OLED_Demo_UNO&Mega2560_IIC_V1.0\Example
+
+首先需要将Arduino_OLED_Demo_UNO&Mega2560_IIC_V1.0\Install libraries下的U8glib开源库拷贝到IDE运行库所在的目录。
+默认为C:\Users\Administrator\Documents\Arduino\libraries，自己也可以设置。
+
+Arduino测试程序使用U8glib开源库，实现了三个测试程序：
+Example01-String_Moving：字符旋转显示；
+Example02-graph_test：图形显示；
+Example03-show_BMP：图片显示；
+
+注意：
+A、本测试代码适用于UNO和Mega2560等，不同的单片机接线引脚不一样，具体见接线说明。
+B、本测试程序所用IDE版本为：arduino-1.6.2-windows，如用户使用的版本低于1.62可能会有编译错误，请更换至新版本。

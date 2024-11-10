@@ -1,0 +1,1 @@
+"function.c" OPTIMIZE (8,SPEED) BROWSE INCDIR(.\inc) DEBUG OBJECTEXTEND PRINT(.\list\function.lst) TABS (2) OBJECT(.\output\function.obj)

@@ -1,0 +1,927 @@
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\output\main.obj
+COMPILER INVOKED BY: E:\Keil_v5\C51\BIN\C51.EXE source\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\inc) DEBUG OBJECTEXTEND 
+                    -PRINT(.\list\main.lst) TABS(2) OBJECT(.\output\main.obj)
+
+line level    source
+
+   1          #include "main.h"
+   2          
+   3          //静音测试
+   4          //void SetBeep(char a,char b);
+   5          
+   6          //用户自定义函数声明
+   7          void Initial_interface();
+   8          void myKey_callback();
+   9          void my100mS_callback();
+  10          void myKN_callback();
+  11          void myVib_callback();
+  12          unsigned int tem_calculate(unsigned int tem_adc);
+  13                                   
+  14          //用户程序全局变量定义
+  15          char state;//操作系统此时的状态
+  16          char previous_state;//陷入切换模式之前的状态
+  17          char vib_old_state;//陷入Vib之前的状态
+  18          //char maxstate=10;//state的最大编号，修改这个之后需要同时在main.h中修改两个数组//为节省空间，直接在程序里
+             -改
+  19          bit key_flag = 0;
+  20          bit transfer = 0;//state切换时为1，切换后OLED变化后归为0。
+  21          //这里是因为OLED若一直刷新，将导致LED闪烁，无法正常显示，OLED短时间内只能设置一次
+  22          
+  23          char count=0;//用于计数分割时间，达成闪烁效果
+  24          
+  25          //mode1:Clock实时时钟初始默认值
+  26          code struct_DS1302_RTC rtc_origin = {0x30,0x32,0x11,0x25,0x7,0x2,0x23};//  秒 分 时 日 月 星期 年
+  27          struct_DS1302_RTC rtc;
+  28          char clock_mode = 0;//0-时分秒  1-年月日   2-星期
+  29          
+  30          //mode2:stopwatch秒表模式全局变量
+  31          unsigned int time1=0,time2 = 0;  
+  32          bit stopwatch_1=0,stopwatch_2 = 0;
+  33          
+  34          //mode3:timer定时器
+  35          unsigned int timer = 3481;
+  36          bit timer_change = 0;
+  37          bit timer_minute = 0;
+  38          bit timer_second = 0;
+  39          bit timer_run = 0;
+  40          
+  41          //mode4：light_intensity
+  42          char light_intensity_lowerlimit = 20;
+  43          char light_intensity_upperlimit = 100;
+  44          bit light_intensity_mode = 1;
+  45          bit light_intensity_change = 0;
+  46          bit light_intensity_lowerlimit_change = 0;
+  47          bit light_intensity_upperlimit_change = 0;
+  48          bit light_intensity_mode_change = 0;
+  49          
+  50          //mode5：temperature
+  51          unsigned int temperature_lowerlimit = 200;
+  52          unsigned int temperature_upperlimit = 400;
+  53          bit temperature_mode = 1;
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 2   
+
+  54          bit temperature_change = 0;
+  55          bit temperature_lowerlimit_change = 0;
+  56          bit temperature_upperlimit_change = 0;
+  57          bit temperature_mode_change = 0;
+  58          
+  59          //mode6:FM收音机全局变量
+  60          code struct_FMRadio radio_origin = {968,3,0,1,1};//频率*10 音量 灯 灯 灯 (0亮1灭)
+  61          //107.0浙江广播 96.8浙江音乐广播
+  62          bit FM_frequency = 0; //是否在调节频率
+  63          bit FM_volume = 0;    //是否在调节音量
+  64          bit FM_mutex = 0; //对于导航按键访问的锁
+  65          
+  66          //mode7:Mp3
+  67          
+  68          //mode8：RemoteControl
+  69          
+  70          //主函数
+  71          void main() 
+  72          { 
+  73   1        //加载模块
+  74   1        //Initialization
+  75   1        KeyInit();
+  76   1        BeepInit();
+  77   1        OLED_Init();//启动OLED模块
+  78   1        AdcInit(ADCexpEXT);//由于ADC模块自带对EXT口的控制，以该参数启动以解除控制，释放EXT口给OLED
+  79   1        DisplayerInit();
+  80   1        DS1302Init(rtc_origin);
+  81   1        FMRadioInit(radio_origin);//FM收音机模块
+  82   1        MusicPlayerInit();
+  83   1        IrInit(NEC_R05d);
+  84   1        VibInit();
+  85   1        
+  86   1      
+  87   1        //设置事件回调函数
+  88   1        SetEventCallBack(enumEventKey, myKey_callback);
+  89   1        SetEventCallBack(enumEventSys100mS, my100mS_callback);
+  90   1        SetEventCallBack(enumEventNav, myKN_callback);//负责导航键和K3键★★★的回调
+  91   1        SetEventCallBack(enumEventVib, myVib_callback);
+  92   1        
+  93   1        //用户程序状态初始化
+  94   1        
+  95   1        
+  96   1        //用户程序变量初始化
+  97   1        state = 0;  
+  98   1        previous_state = 0;
+  99   1        vib_old_state = 0;
+ 100   1        Initial_interface();
+ 101   1        SetDisplayerArea(0,7);
+ 102   1        //RTC_Write(rtc_origin);  //修改系统时
+ 103   1        
+ 104   1        //OS主循环
+ 105   1        MySTC_Init();
+ 106   1        while(1)              
+ 107   1          {
+ 108   2            MySTC_OS();
+ 109   2            //用户主循环程序
+ 110   2          }
+ 111   1      }                 
+ 112          
+ 113          //初始界面
+ 114          void Initial_interface()
+ 115          {
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 3   
+
+ 116   1          OLED_DrawBMP(0, 0, 128, 8, BMP0);
+ 117   1          OLED_ShowString(0, 6, "HUNAN UNIVERSITY", 16);
+ 118   1          state=2;
+ 119   1      }
+ 120          
+ 121          //导航按键和K3按键的回调函数
+ 122          void myKN_callback()
+ 123          {
+ 124   1        char K3=GetAdcNavAct(enumAdcNavKey3);
+ 125   1        char up=GetAdcNavAct(enumAdcNavKeyUp);
+ 126   1        char down=GetAdcNavAct(enumAdcNavKeyDown);
+ 127   1        char left=GetAdcNavAct(enumAdcNavKeyLeft);
+ 128   1        char right=GetAdcNavAct(enumAdcNavKeyRight);
+ 129   1        
+ 130   1        //mode2: stopwatch1  秒表模式1
+ 131   1        if (state == 4)
+ 132   1        {
+ 133   2          if (K3 == enumKeyPress) 
+ 134   2           { 
+ 135   3             stopwatch_1 =~stopwatch_1; 
+ 136   3             if (stopwatch_1) time1=0; 
+ 137   3             SetBeep(1000,20);
+ 138   3           }
+ 139   2        }
+ 140   1        
+ 141   1        //mode3: timer-nav  定时器模式导航按键调节
+ 142   1        if (state == 5 && timer_change == 1)
+ 143   1        {
+ 144   2          if (up == enumKeyPress)
+ 145   2          {
+ 146   3            if (timer_minute == 1) timer += 600;
+ 147   3            else if (timer_second == 1) timer += 10;
+ 148   3            SetBeep(1000,20);
+ 149   3          }
+ 150   2          else if (down == enumKeyPress)
+ 151   2          {
+ 152   3            if (timer_minute == 1) if (timer-600 > 0) timer -= 600; else timer = 0;
+ 153   3            else if (timer_second == 1) if (timer-10 > 0) timer -= 10; else timer = 0;
+ 154   3            SetBeep(1000,20);
+ 155   3          }
+ 156   2          if (left == enumKeyPress)
+ 157   2          {
+ 158   3            if (timer_second == 1) {timer_second = 0; timer_minute = 1;}
+ 159   3            SetBeep(1000,20);
+ 160   3          }
+ 161   2          if (right == enumKeyPress)
+ 162   2          {
+ 163   3            if (timer_minute == 1) {timer_minute = 0; timer_second = 1;}
+ 164   3            SetBeep(1000,20);
+ 165   3          }
+ 166   2        }
+ 167   1        
+ 168   1        //mode3: timer 定时器模式(正常状态与计时状态转换)
+ 169   1        if (state == 5 && timer_change == 0)
+ 170   1        {
+ 171   2          if (K3  == enumKeyPress)
+ 172   2          {
+ 173   3            timer_run = ~timer_run;
+ 174   3          }
+ 175   2        }
+ 176   1        
+ 177   1        //mode4: light_intensity_change
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 4   
+
+ 178   1        if (state == 6 && light_intensity_change == 1)
+ 179   1        {
+ 180   2          if (up == enumKeyPress)
+ 181   2          {
+ 182   3            if (light_intensity_lowerlimit_change == 1) //下限增大
+ 183   3            {
+ 184   4              if (light_intensity_lowerlimit+1 < light_intensity_upperlimit) light_intensity_lowerlimit++;
+ 185   4            }
+ 186   3            else if (light_intensity_upperlimit_change == 1) //上限增大
+ 187   3            {
+ 188   4              if (light_intensity_upperlimit+1 < 255) light_intensity_upperlimit++;
+ 189   4            }
+ 190   3            else if (light_intensity_mode_change == 1) //修改模式
+ 191   3            {
+ 192   4              light_intensity_mode = ~light_intensity_mode;
+ 193   4            }
+ 194   3            SetBeep(1000,20);
+ 195   3          }
+ 196   2          else if (down == enumKeyPress)
+ 197   2          {
+ 198   3            if (light_intensity_lowerlimit_change == 1) //下限减小
+ 199   3            {
+ 200   4              if (light_intensity_lowerlimit-1 > 0) light_intensity_lowerlimit--;
+ 201   4            }
+ 202   3            else if (light_intensity_upperlimit_change == 1) //上限减小
+ 203   3            {
+ 204   4              if (light_intensity_upperlimit-1 > light_intensity_lowerlimit) light_intensity_upperlimit--;
+ 205   4            }
+ 206   3            else if (light_intensity_mode_change == 1) //修改模式
+ 207   3            {
+ 208   4              light_intensity_mode = ~light_intensity_mode;
+ 209   4            }
+ 210   3            SetBeep(1000,20);
+ 211   3          }
+ 212   2          if (left == enumKeyPress)
+ 213   2          {
+ 214   3            if (light_intensity_lowerlimit_change == 1) 
+ 215   3            {
+ 216   4              light_intensity_lowerlimit_change = 0;
+ 217   4              light_intensity_mode_change = 1;
+ 218   4            }
+ 219   3            if (light_intensity_upperlimit_change == 1) 
+ 220   3            {
+ 221   4              light_intensity_upperlimit_change = 0;
+ 222   4              light_intensity_lowerlimit_change = 1;
+ 223   4            }
+ 224   3            SetBeep(1000,20);
+ 225   3          }
+ 226   2          if (right == enumKeyPress)
+ 227   2          {
+ 228   3            if (light_intensity_lowerlimit_change == 1) 
+ 229   3            {
+ 230   4              light_intensity_lowerlimit_change = 0;
+ 231   4              light_intensity_upperlimit_change = 1;
+ 232   4            }
+ 233   3            if (light_intensity_mode_change == 1) 
+ 234   3            {
+ 235   4              light_intensity_mode_change = 0;
+ 236   4              light_intensity_lowerlimit_change = 1;
+ 237   4            }
+ 238   3            SetBeep(1000,20);
+ 239   3          }
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 5   
+
+ 240   2        }
+ 241   1        
+ 242   1        //mode5: temperature_change
+ 243   1        if (state == 7 && temperature_change == 1)
+ 244   1        {
+ 245   2          if (up == enumKeyPress)
+ 246   2          {
+ 247   3            if (temperature_lowerlimit_change == 1) //下限增大
+ 248   3            {
+ 249   4              if (temperature_lowerlimit+1 < temperature_upperlimit) temperature_lowerlimit++;
+ 250   4            }
+ 251   3            else if (temperature_upperlimit_change == 1) //上限增大
+ 252   3            {
+ 253   4              if (temperature_upperlimit+1 < 999) temperature_upperlimit++;
+ 254   4            }
+ 255   3            else if (temperature_mode_change == 1) //修改模式
+ 256   3            {
+ 257   4              temperature_mode = ~temperature_mode;
+ 258   4            }
+ 259   3            SetBeep(1000,20);
+ 260   3          }
+ 261   2          else if (down == enumKeyPress)
+ 262   2          {
+ 263   3            if (temperature_lowerlimit_change == 1) //下限减小
+ 264   3            {
+ 265   4              if (temperature_lowerlimit-1 > 0) temperature_lowerlimit--;
+ 266   4            }
+ 267   3            else if (temperature_upperlimit_change == 1) //上限减小
+ 268   3            {
+ 269   4              if (temperature_upperlimit-1 > temperature_lowerlimit) temperature_upperlimit--;
+ 270   4            }
+ 271   3            else if (temperature_mode_change == 1) //修改模式
+ 272   3            {
+ 273   4              temperature_mode = ~temperature_mode;
+ 274   4            }
+ 275   3            SetBeep(1000,20);
+ 276   3          }
+ 277   2          if (left == enumKeyPress)
+ 278   2          {
+ 279   3            if (temperature_lowerlimit_change == 1) 
+ 280   3            {
+ 281   4              temperature_lowerlimit_change = 0;
+ 282   4              temperature_mode_change = 1;
+ 283   4            }
+ 284   3            if (temperature_upperlimit_change == 1) 
+ 285   3            {
+ 286   4              temperature_upperlimit_change = 0;
+ 287   4              temperature_lowerlimit_change = 1;
+ 288   4            }
+ 289   3            SetBeep(1000,20);
+ 290   3          }
+ 291   2          if (right == enumKeyPress)
+ 292   2          {
+ 293   3            if (temperature_lowerlimit_change == 1) 
+ 294   3            {
+ 295   4              temperature_lowerlimit_change = 0;
+ 296   4              temperature_upperlimit_change = 1;
+ 297   4            }
+ 298   3            if (temperature_mode_change == 1) 
+ 299   3            {
+ 300   4              temperature_mode_change = 0;
+ 301   4              temperature_lowerlimit_change = 1;
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 6   
+
+ 302   4            }
+ 303   3            SetBeep(1000,20);
+ 304   3          }
+ 305   2        }
+ 306   1        
+ 307   1        //mode6: FM收音机模式(K3)
+ 308   1        if (state == 8)
+ 309   1        {
+ 310   2          if (K3 == enumKeyPress && FM_mutex == 0)//未选中状态进入选中状态
+ 311   2          {
+ 312   3            FM_mutex = 1;//获取锁
+ 313   3            FM_volume = 1;
+ 314   3            SetBeep(1500,20);
+ 315   3          }
+ 316   2          else if (K3 == enumKeyPress && FM_mutex == 1 && FM_volume == 1)//选中状态恢复未选中状态
+ 317   2          {
+ 318   3            FM_mutex = 0;//释放锁
+ 319   3            FM_volume = 0;
+ 320   3            SetBeep(1500,20);
+ 321   3          }
+ 322   2        }
+ 323   1        
+ 324   1        
+ 325   1        //mode6: FM收音机模式导航按键调节
+ 326   1        if (state == 8)
+ 327   1        {
+ 328   2          struct_FMRadio radio;
+ 329   2          radio.frequency = GetFMRadio().frequency;
+ 330   2          radio.volume = GetFMRadio().volume;
+ 331   2          radio.GP1 = GetFMRadio().GP1;
+ 332   2          radio.GP2 = GetFMRadio().GP2;
+ 333   2          radio.GP3 = GetFMRadio().GP3;
+ 334   2          if (up == enumKeyPress)
+ 335   2          {
+ 336   3            if (FM_frequency == 1) radio.frequency += 1;
+ 337   3            else if (FM_volume == 1) radio.volume += 1;
+ 338   3            SetBeep(1000,20);
+ 339   3          }
+ 340   2          else if (down == enumKeyPress)
+ 341   2          {
+ 342   3            if (FM_frequency == 1) radio.frequency -= 1;
+ 343   3            else if (FM_volume == 1) radio.volume -= 1;
+ 344   3            SetBeep(1000,20);
+ 345   3          }
+ 346   2          SetFMRadio(radio);
+ 347   2        }
+ 348   1        
+ 349   1      }
+ 350          
+ 351          
+ 352          //Key 按键触发回调函数
+ 353          void myKey_callback()
+ 354          { 
+ 355   1        char K1=GetKeyAct(enumKey1);
+ 356   1        char K2=GetKeyAct(enumKey2);
+ 357   1        //char K3=GetKeyAct(enumKey3);
+ 358   1        //char K3=GetAdcNavAct(enumAdcNavKey3);
+ 359   1        //特别注意：
+ 360   1        //由于导航按键与K3键共用了单片机同一个端口（P1.7），
+ 361   1        //启用ADC模块后，P1.7口IO功能失效，
+ 362   1        //只能用GetAdcNavAct(char Nav_button)函数获取K3按键的事件或状态。
+ 363   1        
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 7   
+
+ 364   1        //切换模式
+ 365   1        if (state != 0)//排除Vib模式
+ 366   1        {
+ 367   2          if (key_flag == 0 && K1 == enumKeyPress) 
+ 368   2          { 
+ 369   3            previous_state=state;//保存原状态
+ 370   3            state=1;
+ 371   3            key_flag=1;
+ 372   3          }
+ 373   2          else if (key_flag == 1 && K1 == enumKeyPress)
+ 374   2          {
+ 375   3            if (previous_state < 10) 
+ 376   3            {
+ 377   4              SetBeep(600,10);
+ 378   4              state=previous_state+1;//切换到下一个模式
+ 379   4              transfer=1;
+ 380   4            }
+ 381   3            else 
+ 382   3            {
+ 383   4              SetBeep(600,10);
+ 384   4              state=3;//模式到尽头，切换回开头
+ 385   4              transfer=1;
+ 386   4            }
+ 387   3            key_flag=0;
+ 388   3          }
+ 389   2        }
+ 390   1        else if (state == 0)
+ 391   1        {
+ 392   2          if (K1 == enumKeyPress)
+ 393   2          {
+ 394   3            state = vib_old_state;
+ 395   3          }
+ 396   2        }
+ 397   1        
+ 398   1        //mode1: 实时时钟模式-切换查看 时分秒/年月日/星期
+ 399   1        if (state == 3)
+ 400   1        {
+ 401   2          if (K2 == enumKeyPress)
+ 402   2          {
+ 403   3            if (clock_mode<2) clock_mode++;
+ 404   3            else clock_mode = 0;
+ 405   3          }
+ 406   2        }
+ 407   1      
+ 408   1        //mode2: 秒表模式2
+ 409   1        if (state == 4)
+ 410   1        {
+ 411   2          if (K2 == enumKeyPress)
+ 412   2          { 
+ 413   3            stopwatch_2 =~stopwatch_2; 
+ 414   3            if (stopwatch_2) time2=0; 
+ 415   3            SetBeep(1500,20);
+ 416   3          }
+ 417   2        }
+ 418   1        
+ 419   1        //mode3: 定时器模式(normal state <=> change state)
+ 420   1        if (state == 5 && timer_run == 0)
+ 421   1        {
+ 422   2          if (K2 == enumKeyPress)
+ 423   2          {
+ 424   3            if (timer_change == 0) timer_second = 1;
+ 425   3            timer_change = ~timer_change;
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 8   
+
+ 426   3          }
+ 427   2        }
+ 428   1        
+ 429   1        //mode4: 光感模式(normal state <=> change state)
+ 430   1        if (state == 6)
+ 431   1        {
+ 432   2          if (K2 == enumKeyPress)
+ 433   2          {
+ 434   3            light_intensity_change = ~light_intensity_change;
+ 435   3            light_intensity_lowerlimit_change = 1;
+ 436   3          }
+ 437   2        }
+ 438   1        
+ 439   1        //mode5: 温感模式(normal state <=> change state)
+ 440   1        if (state == 7)
+ 441   1        {
+ 442   2          if (K2 == enumKeyPress)
+ 443   2          {
+ 444   3            temperature_change = ~temperature_change;
+ 445   3            temperature_lowerlimit_change = 1;
+ 446   3          }
+ 447   2        }
+ 448   1        
+ 449   1        //mode6: FM收音机模式(K2)
+ 450   1        if (state == 8)
+ 451   1        {
+ 452   2          if (K2 == enumKeyPress && FM_mutex == 0)//未选中状态进入选中状态
+ 453   2          {
+ 454   3            FM_mutex = 1;//获取锁
+ 455   3            FM_frequency = 1;
+ 456   3            SetBeep(1500,20);
+ 457   3          }
+ 458   2          else if (K2 == enumKeyPress && FM_mutex == 1 && FM_frequency == 1)//选中状态恢复未选中状态
+ 459   2          {
+ 460   3            FM_mutex = 0;//释放锁
+ 461   3            FM_frequency = 0;
+ 462   3            SetBeep(1500,20);
+ 463   3          }
+ 464   2        }
+ 465   1        
+ 466   1        //mode7: MP3播放器
+ 467   1        if (state == 9)
+ 468   1        {
+ 469   2          if (K2 == enumKeyPress && GetPlayerMode() == enumModeStop)//停止状态，初次按下K2开始
+ 470   2          {
+ 471   3            SetMusic(90,0xFA,&song_TruE,sizeof(song_TruE),enumMscNull);
+ 472   3            SetPlayerMode(enumModePlay);
+ 473   3          }
+ 474   2          else if (K2 == enumKeyPress && GetPlayerMode() == enumModePlay)//仍在播放，按下K2暂停
+ 475   2          {
+ 476   3            SetPlayerMode(enumModePause);
+ 477   3          }
+ 478   2          else if (K2 == enumKeyPress && GetPlayerMode() == enumModePause)//暂停状态，按下K2继续
+ 479   2          {
+ 480   3            SetPlayerMode(enumModePlay);
+ 481   3          }
+ 482   2        }
+ 483   1        
+ 484   1        //mode7(end): 离开音乐播放模式，自动停止播放
+ 485   1        if (state != 9 && (GetPlayerMode() == enumModePause || GetPlayerMode() == enumModePlay))
+ 486   1          SetPlayerMode(enumModeStop);
+ 487   1        
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 9   
+
+ 488   1        //mode8: 遥控模式
+ 489   1        if (state == 10)
+ 490   1        {
+ 491   2          if (K2 == enumKeyPress)
+ 492   2          {
+ 493   3            if(IrTxdSet(&controller,22) == enumIrTxOK) SetBeep(1500,20);
+ 494   3          }
+ 495   2        }
+ 496   1      }
+ 497          
+ 498          
+ 499          
+ 500          
+ 501          //定时回调函数(用于显示数码管)
+ 502          void my100mS_callback()
+ 503          { 
+ 504   1        
+ 505   1        //秒表模式，在秒表模式之外也计时
+ 506   1        if(stopwatch_1 ==1)  time1++;
+ 507   1        if(stopwatch_2 ==1)  time2++;
+ 508   1        
+ 509   1        //定时器模式，在定时器之外也进行
+ 510   1        if (timer_run == 1 ) timer--;
+ 511   1        if (timer == 0 )
+ 512   1        {
+ 513   2          timer_run = 0;
+ 514   2          SetBeep(1400,200);
+ 515   2          timer = 3000;
+ 516   2          
+ 517   2        }
+ 518   1      
+ 519   1        switch(state)
+ 520   1        {
+ 521   2          
+ 522   2          
+ 523   2          //Vib处理模式界面
+ 524   2          case 0:
+ 525   2          {
+ 526   3            Seg7Print(30,13,1,11,11,1,13,30);
+ 527   3            break;
+ 528   3          }
+ 529   2          
+ 530   2          
+ 531   2          //切换模式界面
+ 532   2          case 1:
+ 533   2          {
+ 534   3            if (transfer == 1)//state转移，需要改变屏幕
+ 535   3            {
+ 536   4              OLED_ShowString(0, 6, "Next Mode：", 16);
+ 537   4              transfer=0;
+ 538   4            }
+ 539   3            Seg7Print(32,37,44,44,48,34,12,next_mode[previous_state]);
+ 540   3            LedPrint(0);
+ 541   3            break;
+ 542   3          }
+ 543   2          
+ 544   2          
+ 545   2          //初始欢迎界面:HNU-CSEE+流水灯
+ 546   2          case 2:
+ 547   2          {
+ 548   3            unsigned char a;
+ 549   3            Seg7Print(37,43,50,12,32,48,34,34);
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 10  
+
+ 550   3          
+ 551   3            if( a != 0) a=a<<1;
+ 552   3              else a=0x01;
+ 553   3            LedPrint(a);
+ 554   3            break;
+ 555   3          }
+ 556   2          
+ 557   2          
+ 558   2          //Mode1:实时时钟
+ 559   2          //初始显示时间，使用K2键依次切换显示 时分秒/年月日/星期(英文+数字)
+ 560   2          case 3:
+ 561   2          {
+ 562   3            rtc = RTC_Read();
+ 563   3            switch(clock_mode)
+ 564   3            {
+ 565   4              case 0:
+ 566   4              {
+ 567   5                Seg7Print(rtc.hour/16,rtc.hour%16,12,rtc.minute/16,rtc.minute%16,12,rtc.second/16,rtc.second%16);
+ 568   5                break;
+ 569   5              }
+ 570   4              case 1:
+ 571   4              {
+ 572   5                Seg7Print(rtc.year/16,rtc.year%16,12,rtc.month/16,rtc.month%16,12,rtc.day/16,rtc.day%16);
+ 573   5                break;
+ 574   5              }
+ 575   4              case 2:
+ 576   4              {
+ 577   5                unsigned char weekday = rtc.week;
+ 578   5                switch(weekday)
+ 579   5                {
+ 580   6                  case 1:{Seg7Print(43,43,44,56,10,10,12,1); break;}
+ 581   6                  case 2:{Seg7Print(49,50,57,10,10,10,12,2); break;}
+ 582   6                  case 3:{Seg7Print(50,50,34,58,10,10,12,3); break;}
+ 583   6                  case 4:{Seg7Print(49,37,50,47,59,10,12,4); break;}
+ 584   6                  case 5:{Seg7Print(35,47,60,10,10,10,12,4); break;}
+ 585   6                  case 6:{Seg7Print(48,30,61,10,10,10,12,4); break;}
+ 586   6                  case 7:{Seg7Print(48,50,62,10,10,10,12,4); break;}
+ 587   6                }
+ 588   5                break;
+ 589   5              }
+ 590   4            }
+ 591   3            
+ 592   3            break;
+ 593   3          }
+ 594   2          
+ 595   2          
+ 596   2          //Mode2:双通道秒表
+ 597   2          //使用K3/K2键分别独立记两个表，切换模式不影响计时，将在后台继续
+ 598   2          case 4:
+ 599   2          {
+ 600   3            unsigned char d0,d1,d2,d3,d4,d5,d6,d7;  
+ 601   3        
+ 602   3            d7 = (time1/1000)%10; if (d7 == 0) d7 = 10;
+ 603   3            d6 = (time1/100)%10;  if (d6 == 0) d6 = 10;
+ 604   3            d5 = (time1/10)%10+20;//这里要显示小数点
+ 605   3            d4 = (time1%10);  
+ 606   3            
+ 607   3            d3 = (time2/1000)%10; if (d3 == 0) d3 = 10;
+ 608   3            d2 = (time2/100)%10;  if (d2 == 0) d2 = 10;
+ 609   3            d1 = (time2/10)%10+20;//这里要显示小数点
+ 610   3            d0 = (time2%10);
+ 611   3            
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 11  
+
+ 612   3            Seg7Print(d7,d6,d5,d4,d3,d2,d1,d0);
+ 613   3            
+ 614   3            break;
+ 615   3          }
+ 616   2          
+ 617   2          
+ 618   2          //Mode3:定时器
+ 619   2          case 5:
+ 620   2          {
+ 621   3            count++;
+ 622   3            if (count<=3)//用计数分割时间，达成闪烁效果
+ 623   3            {
+ 624   4              Seg7Print(10,10,timer/10/60/10,timer/10/60%10,12,timer/10%60/10,timer/10%60%10+20,timer%10);
+ 625   4            }
+ 626   3            else
+ 627   3            {
+ 628   4              if (timer_change == 0)//正常状态 或 计数模式
+ 629   4              {
+ 630   5                if (timer_run == 0) Seg7Print(10,10,timer/10/60/10,timer/10/60%10,12,timer/10%60/10,timer/10%60%10+20
+             -,timer%10);
+ 631   5                else if (timer_run == 1) Seg7Print(45,10,timer/10/60/10,timer/10/60%10,12,timer/10%60/10,timer/10%60%
+             -10+20,timer%10);
+ 632   5              }
+ 633   4              else if (timer_minute == 1)//调节分钟，分钟闪烁
+ 634   4              {
+ 635   5                Seg7Print(32,10,10,10,12,timer/10%60/10,timer/10%60%10+20,timer%10);
+ 636   5              }
+ 637   4              else if (timer_second == 1)//调节秒钟，秒钟闪烁
+ 638   4              {
+ 639   5                Seg7Print(32,10,timer/10/60/10,timer/10/60%10,12,10,10,10);
+ 640   5              }
+ 641   4            }
+ 642   3            if (count > 5) count=0;
+ 643   3            break;
+ 644   3          }
+ 645   2          
+ 646   2          
+ 647   2          //Mode4:光照监测与报警
+ 648   2          case 6:
+ 649   2          {
+ 650   3            unsigned int num = GetADC().Rop;  
+ 651   3            
+ 652   3            if (light_intensity_change == 0)//正常模式
+ 653   3            {
+ 654   4              Seg7Print(34,4,12,10,10,num/100,num/10%10,num%10);
+ 655   4              if (num < light_intensity_lowerlimit)
+ 656   4              {
+ 657   5                SetBeep(1200,200);
+ 658   5              }
+ 659   4              else if (num > light_intensity_upperlimit)
+ 660   4              {
+ 661   5                SetBeep(2000,200);
+ 662   5              }
+ 663   4            }
+ 664   3            else if (light_intensity_change == 1)//change模式
+ 665   3            {
+ 666   4              count++;
+ 667   4        
+ 668   4              if (count<=3)//用计数分割时间，达成闪烁效果
+ 669   4              {
+ 670   5                Seg7Print(light_intensity_mode,
+ 671   5                          light_intensity_lowerlimit/100%10,
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 12  
+
+ 672   5                          light_intensity_lowerlimit/10%10,
+ 673   5                          light_intensity_lowerlimit%10,
+ 674   5                          12,
+ 675   5                          light_intensity_upperlimit/100%10,
+ 676   5                          light_intensity_upperlimit/10%10,
+ 677   5                          light_intensity_upperlimit%10);
+ 678   5              }
+ 679   4              else
+ 680   4              {
+ 681   5                if (light_intensity_lowerlimit_change == 1) //下限改动
+ 682   5                {
+ 683   6                  Seg7Print(light_intensity_mode,
+ 684   6                          10,10,10,
+ 685   6                          12,
+ 686   6                          light_intensity_upperlimit/100%10,
+ 687   6                          light_intensity_upperlimit/10%10,
+ 688   6                          light_intensity_upperlimit%10);
+ 689   6                }
+ 690   5                else if (light_intensity_upperlimit_change == 1) //上限改动
+ 691   5                {
+ 692   6                  Seg7Print(light_intensity_mode,
+ 693   6                          light_intensity_lowerlimit/100%10,
+ 694   6                          light_intensity_lowerlimit/10%10,
+ 695   6                          light_intensity_lowerlimit%10,
+ 696   6                          12,
+ 697   6                          10,10,10);
+ 698   6                }
+ 699   5                else if (light_intensity_mode_change == 1) //模式改动
+ 700   5                {
+ 701   6                  Seg7Print(10,
+ 702   6                          light_intensity_lowerlimit/100%10,
+ 703   6                          light_intensity_lowerlimit/10%10,
+ 704   6                          light_intensity_lowerlimit%10,
+ 705   6                          12,
+ 706   6                          light_intensity_upperlimit/100%10,
+ 707   6                          light_intensity_upperlimit/10%10,
+ 708   6                          light_intensity_upperlimit%10);
+ 709   6                }
+ 710   5              }
+ 711   4              if (count > 5) count=0;
+ 712   4            }
+ 713   3            
+ 714   3            break;
+ 715   3          }
+ 716   2          
+ 717   2          
+ 718   2          //Mode5:温度监测与报警
+ 719   2          case 7:
+ 720   2          {
+ 721   3            unsigned int tem_adc = GetADC().Rt;
+ 722   3            unsigned int tem = tem_calculate(tem_adc);
+ 723   3            
+ 724   3            if (temperature_change == 0)//正常模式
+ 725   3            {
+ 726   4              Seg7Print(34,5,12,10,10,tem/100%10,20+tem/10%10,tem%10);
+ 727   4              //第二位显示小数点
+ 728   4              if (tem/10 < 20)
+ 729   4              {
+ 730   5                SetBeep(1200,200);
+ 731   5              }
+ 732   4              else if (tem/10 > 40)
+ 733   4              {
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 13  
+
+ 734   5                SetBeep(2000,200);
+ 735   5              }
+ 736   4            }
+ 737   3            else if (temperature_change == 1)//change模式
+ 738   3            {
+ 739   4              count++;
+ 740   4        
+ 741   4              if (count<=3)//用计数分割时间，达成闪烁效果
+ 742   4              {
+ 743   5                Seg7Print(temperature_mode,
+ 744   5                          temperature_lowerlimit/100%10,
+ 745   5                          20+temperature_lowerlimit/10%10,
+ 746   5                          temperature_lowerlimit%10,
+ 747   5                          12,
+ 748   5                          temperature_upperlimit/100%10,
+ 749   5                          20+temperature_upperlimit/10%10,
+ 750   5                          temperature_upperlimit%10);
+ 751   5              }
+ 752   4              else
+ 753   4              {
+ 754   5                if (temperature_lowerlimit_change == 1) //下限改动
+ 755   5                {
+ 756   6                  Seg7Print(temperature_mode,
+ 757   6                          10,10,10,
+ 758   6                          12,
+ 759   6                          temperature_upperlimit/100%10,
+ 760   6                          20+temperature_upperlimit/10%10,
+ 761   6                          temperature_upperlimit%10);
+ 762   6                }
+ 763   5                else if (temperature_upperlimit_change == 1) //上限改动
+ 764   5                {
+ 765   6                  Seg7Print(temperature_mode,
+ 766   6                          temperature_lowerlimit/100%10,
+ 767   6                          20+temperature_lowerlimit/10%10,
+ 768   6                          temperature_lowerlimit%10,
+ 769   6                          12,
+ 770   6                          10,10,10);
+ 771   6                }
+ 772   5                else if (temperature_mode_change == 1) //模式改动
+ 773   5                {
+ 774   6                  Seg7Print(10,
+ 775   6                          temperature_lowerlimit/100%10,
+ 776   6                          20+temperature_lowerlimit/10%10,
+ 777   6                          temperature_lowerlimit%10,
+ 778   6                          12,
+ 779   6                          temperature_upperlimit/100%10,
+ 780   6                          20+temperature_upperlimit/10%10,
+ 781   6                          temperature_upperlimit%10);
+ 782   6                }
+ 783   5              }
+ 784   4              if (count > 5) count=0;
+ 785   4            }
+ 786   3            
+ 787   3              break;
+ 788   3          }
+ 789   2          
+ 790   2          
+ 791   2          //Mode6:FM收音机
+ 792   2          //按K1或K2进入选中状态，分别调节音量和频率，按上下导航键调节值大小
+ 793   2          case 8:
+ 794   2          {
+ 795   3            unsigned int frequency = GetFMRadio().frequency;
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 14  
+
+ 796   3            unsigned char volume = GetFMRadio().volume;
+ 797   3            unsigned char fre0,fre1,fre2,vol0,vol1;
+ 798   3            fre0 = frequency%10;
+ 799   3            fre1 = frequency/10%10+20;
+ 800   3            fre2 = frequency/100%10; if (fre2 == 0) fre2 = 10;
+ 801   3            vol0 = volume%10;
+ 802   3            vol1 = volume/10%10;
+ 803   3            count++;
+ 804   3            if (count<=3)//用计数分割时间，达成闪烁效果
+ 805   3            {
+ 806   4              Seg7Print(50,vol1,vol0,10,35,fre2,fre1,fre0);
+ 807   4            }
+ 808   3            else
+ 809   3            {
+ 810   4              if (FM_frequency == 0 && FM_volume == 0)//正常情况
+ 811   4              {
+ 812   5                Seg7Print(50,vol1,vol0,10,35,fre2,fre1,fre0);
+ 813   5              }
+ 814   4              else if (FM_frequency == 1)//调节频率，频率闪烁
+ 815   4              {
+ 816   5                Seg7Print(50,vol1,vol0,10,35,10,10,10);
+ 817   5              }
+ 818   4              else if (FM_volume == 1)//调节音量，音量闪烁
+ 819   4              {
+ 820   5                Seg7Print(50,10,10,10,35,fre2,fre1,fre0);
+ 821   5              }
+ 822   4            }
+ 823   3            if (count > 5) count=0;
+ 824   3            break;
+ 825   3          }
+ 826   2          
+ 827   2          
+ 828   2          //Mode7:MP3
+ 829   2          case 9:
+ 830   2          {
+ 831   3            if (GetPlayerMode() == enumModeStop) Seg7Print(34,7,12,10,10,10,10,10);
+ 832   3            if (GetPlayerMode() == enumModePause) Seg7Print(45,30,50,48,34,10,10,10);
+ 833   3            break;
+ 834   3          }
+ 835   2          
+ 836   2          
+ 837   2          //Mode8:（格力）空调遥控
+ 838   2          case 10:
+ 839   2          {
+ 840   3            Seg7Print(12,12,43,44,12,8,12,12);
+ 841   3            break;
+ 842   3          }
+ 843   2          
+ 844   2          
+ 845   2          default:
+ 846   2          {
+ 847   3            //do nothing
+ 848   3            break;
+ 849   3          }
+ 850   2          
+ 851   2        };
+ 852   1        
+ 853   1      }
+ 854          
+ 855          //震动事件回调函数
+ 856          void myVib_callback()
+ 857          {
+C51 COMPILER V9.54   MAIN                                                                  07/27/2023 21:07:04 PAGE 15  
+
+ 858   1        if (state != 0) vib_old_state = state;//加判断条件防止连续撞击导致state变为0，锁死出不去
+ 859   1        state = 0;
+ 860   1        SetBeep(600,10);
+ 861   1      }
+ 862          
+ 863          //温度转换辅助函数
+ 864          unsigned int tem_calculate(unsigned int tem_adc)
+ 865          {
+ 866   1        float vccx=tem_adc/1000.0;
+ 867   1        float lnx=log(vccx/(1-vccx));
+ 868   1        float tem=1/((lnx/3950)+(1/298.15))-273.15;
+ 869   1        float tem10=tem*10;
+ 870   1        unsigned int ans=(int)tem10;
+ 871   1        return ans;
+ 872   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   4410    ----
+   CONSTANT SIZE    =   2069    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     24      29
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =     21    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

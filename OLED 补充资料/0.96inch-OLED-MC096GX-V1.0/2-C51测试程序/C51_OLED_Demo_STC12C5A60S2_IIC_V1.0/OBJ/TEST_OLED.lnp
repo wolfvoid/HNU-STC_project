@@ -1,0 +1,4 @@
+".\OBJ\main.obj",
+".\OBJ\oled.obj" 
+TO ".\OBJ\TEST_OLED" 
+PRINT(".\TEST_OLED.m51") RAMSIZE(256) 
