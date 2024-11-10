@@ -38,6 +38,14 @@ A project using STC-B in HNU Summer2023, an interesting project
 
 请注意：OLED相关程序、文件要从所购买的商铺客服处获得，不同型号可能测试程序、使用方式不一样。
 
+## 项目展示
+
+[演示视频](https://www.bilibili.com/video/BV1Kp4y1P7hG/)
+[讲解视频](https://www.bilibili.com/video/BV1ik4y1w7E2/)
+[音乐效果](https://www.bilibili.com/video/BV17X4y1E75W/)
+[音乐效果（官方动画版）](https://www.bilibili.com/video/BV1ak4y1g7cb/)
+[CSDN博客](https://blog.csdn.net/qq_39480177/article/details/132802308)
+
 ## 写在后面
 
 祝你享受与STC板相处的日子。
